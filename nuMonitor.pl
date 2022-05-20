@@ -110,6 +110,7 @@ encoding_aux(or(LTL1, LTL2), or(Term1, Term2)) :- encoding_aux(LTL1, Term1), enc
 encoding_aux(until(LTL1, LTL2), Term) :- encoding_aux(LTL1, Term1), encoding_aux(LTL2, Term2), Term = or(Term2, and(Term1, next(Term))).
 encoding_aux(release(LTL1, LTL2), Term) :- encoding_aux(LTL1, Term1), encoding_aux(LTL2, Term2), Term = and(Term2, or(Term1, next(Term))).
 
+t(buchi(_States, _Alphabet, [], _Transitions, _FinalStates), ff) :- !.
 t(buchi(States, Alphabet, InitialStates, Transitions, FinalStates), OrTerm) :-
     !, findall(NuTerm, (member(State, InitialStates), empty_assoc(A), t(State, buchi(States, Alphabet, InitialStates, Transitions, FinalStates), A, NuTerm)), NuTerms),
     generate_or_term(NuTerms, OrTerm).
@@ -205,11 +206,60 @@ buchi_automaton(LTL, Alphabet, Buchi) :-
     findall(Set, (set_maximally_consistent(ClLTL, SetOfSets), member(Set, SetOfSets)), States),
     findall(Set, (member(Set, States), member(NNFLTL, Set)), InitialStates),
     findall(until(Phi,Psi), member(until(Phi, Psi), ClLTL), Untils),
-    findall(UntilFinals,(member(until(Phi, Psi), Untils), findall(Set1,(member(Set1, States), (member(Psi, Set1);not(member(until(Phi, Psi), Set1)))),UntilFinals)),FinalStates),
+    (Untils = [] ->  (FinalStates = [States]);(findall(UntilFinals,(member(until(Phi, Psi), Untils), findall(Set1,(member(Set1, States), (member(Psi, Set1);not(member(until(Phi, Psi), Set1)))),UntilFinals)),FinalStates))),
     findall(trans(Set1, Props, Set2),(member(Set1, States), member(Set2, States), ltl_consistent(ClLTL, Set1, Set2), findall(prop(P,V), member(prop(P, V), Set1), Props)), Transitions),
     findall(Set, (member(Set, States), not(member(trans(Set, _, _), Transitions)), not(member(trans(_, _, Set), Transitions))), DeadStates),
-    subtract(States, DeadStates, NewStates),
-    Buchi = buchi(NewStates, Alphabet, InitialStates, Transitions, FinalStates).
+    subtract(States, DeadStates, NewStates), 
+    Buchi1 = buchi(NewStates, Alphabet, InitialStates, Transitions, FinalStates),
+    degeneralise(Buchi1, DgBuchi),
+ 	opt_buchi(DgBuchi, Buchi).
+
+opt_buchi(buchi(States, Alphabet, InitialStates, Transitions, FinalStates), Buchi) :-
+    findall(State,(member(State, States), is_not_empty(State, buchi(States, Alphabet, InitialStates, Transitions, FinalStates))), GoodStates),
+    sort(GoodStates, GoodStates1),
+    intersection(InitialStates, GoodStates1, InitialStates1),
+	findall(trans(S1, E, S2),(member(trans(S1, E, S2), Transitions), member(S1, GoodStates1), member(S2, GoodStates1)), Transitions1),
+    sort(Transitions1, Transitions2),
+    intersection(FinalStates, GoodStates1, FinalStates1),
+    Buchi = buchi(GoodStates1, Alphabet, InitialStates1, Transitions2, FinalStates1).
+
+% check if the language starting from a state of the automaton is not empty
+is_not_empty(State, Buchi) :-
+    is_not_empty(State, Buchi, [], 0), !.
+is_not_empty(State, buchi(_States, _Alphabet, _InitialStates, _Transitions, FinalStates), SeenStates, _D) :-
+    member((State, Depth), SeenStates), !,
+    member((State1, Depth1), SeenStates),
+    member(State1, FinalStates),
+    Depth1 >= Depth, !.
+is_not_empty(State, buchi(States, Alphabet, InitialStates, Transitions, FinalStates), SeenStates, D) :-
+    D1 is D + 1,
+    member(trans(State, _, State1), Transitions),
+    is_not_empty(State1, buchi(States, Alphabet, InitialStates, Transitions, FinalStates), [(State, D1)|SeenStates], D1), !.
+
+% from generalised buchi automaton to buchi automaton
+degeneralise(buchi(States, Alphabet, InitialStates, Transitions, []), DegenBuchi) :- 
+    DegenBuchi = buchi(States, Alphabet, InitialStates, Transitions, []), !.
+degeneralise(buchi(States, Alphabet, InitialStates, Transitions, [FinalStates]), DegenBuchi) :- 
+    DegenBuchi = buchi(States, Alphabet, InitialStates, Transitions, FinalStates), !.
+degeneralise(buchi(States, Alphabet, InitialStates, Transitions, FinalStates), DegenBuchi) :- 
+    FinalStates = [FinalStates1|Aux], 
+    Aux = [FinalStates2|Rest],
+    product(buchi(States, Alphabet, InitialStates, Transitions, FinalStates1), buchi(States, Alphabet, InitialStates, Transitions, FinalStates2), buchi(StatesP, AlphabetP, InitialStatesP, TransitionsP, FinalStatesP)),
+    (Rest = [] -> (DegenBuchi = buchi(StatesP, AlphabetP, InitialStatesP, TransitionsP, FinalStatesP));(append(FinalStatesP, Rest, FinalStatesP1), Product = buchi(StatesP, AlphabetP, InitialStatesP, TransitionsP, FinalStatesP1), degeneralise(Product, DegenBuchi))).
+    
+% product of buchi automata
+product(buchi(States1, Alphabet1, InitialStates1, Transitions1, FinalStates1), buchi(States2, Alphabet2, InitialStates2, Transitions2, FinalStates2), Product) :-
+	findall((S1, S2, 1),(member(S1, States1), member(S2, States2)), StatesAux1),
+    findall((S1, S2, 2),(member(S1, States1), member(S2, States2)), StatesAux2),
+    union(StatesAux1, StatesAux2, States),
+    findall((I1, I2, 1),(member(I1, InitialStates1), member(I2, InitialStates2)), InitialStates),
+    union(Alphabet1, Alphabet2, Alphabet),
+    findall((S1, F2, 2), (member(S1, States1), member(F2, FinalStates2)), FinalStates),
+    findall((S3, S4, I),(member((S1,S2,1), States), member(trans(S1, E, S3), Transitions1), member(trans(S2, E, S4), Transitions2), (member(S1, FinalStates1) -> (I = 2);(I = 1))), TransitionsAux1),
+    findall((S3, S4, I),(member((S1,S2,2), States), member(trans(S1, E, S3), Transitions1), member(trans(S2, E, S4), Transitions2), (member(S2, FinalStates2) -> (I = 1);(I = 2))), TransitionsAux2),
+    union(TransitionsAux1, TransitionsAux2, Transitions),
+    Product = buchi(States, Alphabet, InitialStates, Transitions, FinalStates).
+
 
 % LTL consistency for buchi automaton's states
 ltl_consistent(Closure, Set1, Set2) :-
@@ -243,7 +293,7 @@ monitor6(semantic, LTL, Alphabet, Trace, Verdict) :-
     nnf(LTL, NNFLTL1),
     nnf(not(LTL), NNFLTL2),
     buchi_automaton(NNFLTL1, Alphabet, Buchi1),
-    buchi_automaton(NNFLTL2, Alphabet, Buchi2),
+    buchi_automaton(NNFLTL2, Alphabet, Buchi2), 
     t(Buchi1, NuTerm1),
     t(Buchi2, NuTerm2),
     %findall(VerdictSafe, monitor3(NuTerm1, Alphabet, Trace, VerdictSafe), AllVerdictSafe),
