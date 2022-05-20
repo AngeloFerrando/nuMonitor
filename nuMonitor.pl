@@ -303,6 +303,11 @@ monitor6(semantic, LTL, Alphabet, Trace, Verdict) :-
     %merge_verdicts(AllVerdictCoSafe, VerdictCoSafe), writeln(AllVerdictCoSafe),
     monitor3(NuTerm2, Alphabet, Trace, VerdictCoSafe),
     compute_verdict(VerdictSafe, VerdictCoSafe, Verdict), !.
+monitor6(direct, NuTermOver, NuTermUnder, Alphabet, Trace, Verdict) :-
+    is_satisfied(or(NuTermOver,NuTermUnder), Alphabet), 
+    monitor3(NuTermOver, Alphabet, Trace, VerdictSafe),
+    monitor3(NuTermUnder, Alphabet, Trace, VerdictCoSafe),
+    compute_verdict(VerdictSafe, VerdictCoSafe, Verdict), !.
 
 % auxiliary predicates
 
@@ -351,3 +356,4 @@ generate_and_term([Term|Terms], and(Term, NuTerm)) :-
 generate_or_term([Term], Term) :- !.
 generate_or_term([Term|Terms], or(Term, NuTerm)) :-
     !, generate_or_term(Terms, NuTerm).
+
