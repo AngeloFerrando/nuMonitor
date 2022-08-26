@@ -7,7 +7,7 @@ To use the script exploiting syntactic encoding:
 ?- LTL = <your_LTL_formula>, monitor6(syntactic, LTL, <Alphabet>, <Trace>, Verdict).
 ```
 
-To use the script exploiting sematic encoding:
+To use the script exploiting semantic encoding:
 ```bash
 ?- LTL = <your_LTL_formula>, monitor6(semantic, LTL, <Alphabet>, <Trace>, Verdict).
 ```
