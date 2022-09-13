@@ -74,7 +74,7 @@ Expected result: Verdict = x
 ### Counterexample showing that Syntactic encoding is not the best approximation (this causes the syntactic monitor to lose anticipation)
 
 ```bash
-?- LTL = globally(eventually(prop(p,tt))), monitor6(semantic, LTL, [p,q,s], [[p,q], [p], [q]], Verdict).
+?- LTL = until(prop(p,tt), ff), monitor6(syntactic, LTL, [p,q,s], [[p]], Verdict).
 ```
 Expected result: Verdict = ?(ff)
 
